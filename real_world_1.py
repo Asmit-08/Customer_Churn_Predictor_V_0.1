@@ -19,7 +19,8 @@ from sklearn.metrics import (
 
 # 1. Load and prepare the dataset
 df = pd.read_csv(
-    "data/WA_Fn-UseC_-Telco-Customer-Churn.csv"
+    "data/WA_Fn-UseC_-Telco-Customer-Churn.csv",
+    encoding= "latin-1"
 )
 
 df.drop(
@@ -94,7 +95,28 @@ Xtrain, Xval, ytrain, yval = train_test_split(
     stratify=ytrainval
 )
 
-# 6. Tune GaussianNB's variance smoothing
+
+from sklearn.dummy import DummyClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score
+)
+
+baseline = DummyClassifier(strategy="most_frequent")
+baseline.fit(Xtrain, ytrain)
+
+baseline_pred = baseline.predict(Xval)
+
+print("BASELINE — VALIDATION RESULTS")
+print("Accuracy:", accuracy_score(yval, baseline_pred))
+print("Precision:", precision_score(yval, baseline_pred, zero_division=0))
+print("Recall:", recall_score(yval, baseline_pred, zero_division=0))
+print("F1:", f1_score(yval, baseline_pred, zero_division=0))
+
+
+# Train Gaussian Naive Bayes using 5-fold cross-validation
 param_grid = {
     "Classifier__var_smoothing": [
         1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6
@@ -113,76 +135,115 @@ grid_search = GridSearchCV(
 
 grid_search.fit(Xtrain, ytrain)
 
+print("\nGAUSSIAN NAIVE BAYES — TRAINING RESULTS")
 print("Best parameters:", grid_search.best_params_)
 print("Best CV ROC-AUC:", grid_search.best_score_)
 
 best_model = grid_search.best_estimator_
 
-# 7. Select threshold using validation data only
+
 val_proba = best_model.predict_proba(Xval)[:, 1]
 
-thresholds = [0.20, 0.30, 0.40, 0.50, 0.65]
-threshold_results = []
+# Use the default probability threshold of 0.50 initially
+val_pred = (val_proba >= 0.50).astype(int)
 
-print("\nVALIDATION RESULTS")
+print("\nGAUSSIAN NAIVE BAYES — VALIDATION RESULTS")
+print("Accuracy:", accuracy_score(yval, val_pred))
+print("Precision:", precision_score(yval, val_pred, zero_division=0))
+print("Recall:", recall_score(yval, val_pred, zero_division=0))
+print("F1:", f1_score(yval, val_pred, zero_division=0))
+print("ROC-AUC:", roc_auc_score(yval, val_proba))
 
-for threshold in thresholds:
-    val_pred = (val_proba >= threshold).astype(int)
 
-    precision = precision_score(
-        yval, val_pred, zero_division=0
-    )
-    recall = recall_score(
-        yval, val_pred, zero_division=0
-    )
-    f1 = f1_score(
-        yval, val_pred, zero_division=0
-    )
+# 6. Tune GaussianNB's variance smoothing
+# param_grid = {
+#     "Classifier__var_smoothing": [
+#         1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6
+#     ]
+# }
 
-    threshold_results.append({
-        "threshold": threshold,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1
-    })
+# grid_search = GridSearchCV(
+#     estimator=model_pipeline,
+#     param_grid=param_grid,
+#     scoring="roc_auc",
+#     cv=5,
+#     n_jobs=-1,
+#     verbose=1,
+#     return_train_score=True
+# )
 
-    print(
-        f"Threshold: {threshold:.2f} | "
-        f"Precision: {precision:.3f} | "
-        f"Recall: {recall:.3f} | "
-        f"F1: {f1:.3f}"
-    )
+# grid_search.fit(Xtrain, ytrain)
 
-best_result = max(
-    threshold_results,
-    key=lambda result: result["f1"]
-)
+# print("Best parameters:", grid_search.best_params_)
+# print("Best CV ROC-AUC:", grid_search.best_score_)
 
-best_threshold = best_result["threshold"]
+# best_model = grid_search.best_estimator_
 
-print("\nSelected threshold:", best_threshold)
-print("Best validation F1:", best_result["f1"])
+# # 7. Select threshold using validation data only
+# val_proba = best_model.predict_proba(Xval)[:, 1]
 
-# 8. Final test evaluation — performed only once
-test_proba = best_model.predict_proba(Xtest)[:, 1]
-test_pred = (test_proba >= best_threshold).astype(int)
+# thresholds = [0.20, 0.30, 0.40, 0.50, 0.65]
+# threshold_results = []
 
-print("\nFINAL TEST RESULTS")
-print("Threshold:", best_threshold)
-print("Accuracy:", accuracy_score(ytest, test_pred))
-print(
-    "Precision:",
-    precision_score(ytest, test_pred, zero_division=0)
-)
-print(
-    "Recall:",
-    recall_score(ytest, test_pred, zero_division=0)
-)
-print("F1:", f1_score(ytest, test_pred, zero_division=0))
-print("ROC-AUC:", roc_auc_score(ytest, test_proba))
+# print("\nVALIDATION RESULTS")
 
-print("\nTest classification report:")
-print(classification_report(ytest, test_pred, zero_division=0))
+# for threshold in thresholds:
+#     val_pred = (val_proba >= threshold).astype(int)
 
-print("Test confusion matrix:")
-print(confusion_matrix(ytest, test_pred))
+#     precision = precision_score(
+#         yval, val_pred, zero_division=0
+#     )
+#     recall = recall_score(
+#         yval, val_pred, zero_division=0
+#     )
+#     f1 = f1_score(
+#         yval, val_pred, zero_division=0
+#     )
+
+#     threshold_results.append({
+#         "threshold": threshold,
+#         "precision": precision,
+#         "recall": recall,
+#         "f1": f1
+#     })
+
+#     print(
+#         f"Threshold: {threshold:.2f} | "
+#         f"Precision: {precision:.3f} | "
+#         f"Recall: {recall:.3f} | "
+#         f"F1: {f1:.3f}"
+#     )
+
+# best_result = max(
+#     threshold_results,
+#     key=lambda result: result["f1"]
+# )
+
+# best_threshold = best_result["threshold"]
+
+# print("\nSelected threshold:", best_threshold)
+# print("Best validation F1:", best_result["f1"])
+
+# # 8. Final test evaluation — performed only once
+# test_proba = best_model.predict_proba(Xtest)[:, 1]
+# test_pred = (test_proba >= best_threshold).astype(int)
+
+# print("\nFINAL TEST RESULTS")
+# print("Threshold:", best_threshold)
+# print("Accuracy:", accuracy_score(ytest, test_pred))
+# print(
+#     "Precision:",
+#     precision_score(ytest, test_pred, zero_division=0)
+# )
+# print(
+#     "Recall:",
+#     recall_score(ytest, test_pred, zero_division=0)
+# )
+# print("F1:", f1_score(ytest, test_pred, zero_division=0))
+# print("ROC-AUC:", roc_auc_score(ytest, test_proba))
+
+# print("\nTest classification report:")
+# print(classification_report(ytest, test_pred, zero_division=0))
+
+# print("Test confusion matrix:")
+# print(confusion_matrix(ytest, test_pred))
