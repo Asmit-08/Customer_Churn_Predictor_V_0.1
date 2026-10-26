@@ -1,11 +1,10 @@
-
 import pandas as pd
 
-from sklearn.preprocessing import OneHotEncoder,StandardScaler
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -15,28 +14,17 @@ from sklearn.metrics import (
     recall_score,
     f1_score
 )
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.svm import SVC
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
-models = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "Decision Tree": DecisionTreeClassifier(random_state=42),
-    "Random Forest": RandomForestClassifier(random_state=42),
-    "Gradient Boosting": GradientBoostingClassifier(random_state=42),
-    "Gaussian Naive Bayes": GaussianNB(),
-    "SVM": SVC(probability=True, random_state=42)
-}
 
-# 1. Load and prepare the dataset
+# 1. Load dataset
 df = pd.read_csv(
     "data/WA_Fn-UseC_-Telco-Customer-Churn.csv",
-    encoding= "latin-1"
+    encoding="latin-1"
 )
 
 
+# 2. Basic data preparation
 df.drop(
     columns=["customerID", "PaymentMethod"],
     inplace=True
@@ -52,15 +40,19 @@ df["TotalCharges"] = pd.to_numeric(
     errors="coerce"
 )
 
+
+# 3. Separate features and target
 X = df.drop(columns=["Churn"])
 y = df["Churn"]
 
-# 2. Define feature columns
+
+# 4. Define feature columns
 categorical_columns = [
     "gender", "Partner", "Dependents", "PhoneService",
     "InternetService", "OnlineSecurity", "OnlineBackup",
     "DeviceProtection", "TechSupport", "StreamingTV",
-    "StreamingMovies", "Contract", "PaperlessBilling", "MultipleLines"
+    "StreamingMovies", "Contract", "PaperlessBilling",
+    "MultipleLines"
 ]
 
 numerical_columns = [
@@ -68,204 +60,155 @@ numerical_columns = [
     if col not in categorical_columns
 ]
 
-# 3. Preprocessing
+
+# 5. Preprocessing pipelines
+categorical_pipeline = Pipeline(steps=[
+    (
+        "imputer",
+        SimpleImputer(strategy="most_frequent")
+    ),
+    (
+        "encoder",
+        OneHotEncoder(handle_unknown="ignore")
+    )
+])
+
+numerical_pipeline = Pipeline(steps=[
+    (
+        "imputer",
+        SimpleImputer(strategy="median")
+    )
+])
+
 pre = ColumnTransformer(
     transformers=[
         (
             "categorical",
-            OneHotEncoder(
-                handle_unknown="ignore",
-                sparse_output=False
-            ),
+            categorical_pipeline,
             categorical_columns
         ),
         (
             "numerical",
-            SimpleImputer(strategy="median"),
+            numerical_pipeline,
             numerical_columns
         )
-    ],
-    sparse_threshold=0
+    ]
 )
 
-# 5. Stratified 60/20/20 train-validation-test split
+
+# 6. Stratified 60/20/20 train-validation-test split
 Xtrainval, Xtest, ytrainval, ytest = train_test_split(
-    X, y,
+    X,
+    y,
     test_size=0.20,
     random_state=42,
     stratify=y
 )
 
 Xtrain, Xval, ytrain, yval = train_test_split(
-    Xtrainval, ytrainval,
+    Xtrainval,
+    ytrainval,
     test_size=0.25,
     random_state=42,
     stratify=ytrainval
 )
 
-for model_name, model in models.items():
 
-    if model_name == "SVM":
+# 7. Selected Random Forest configuration
+model = RandomForestClassifier(
+    max_depth=10,
+    n_estimators=200,
+    random_state=42,
+    n_jobs=-1
+)
 
-        model_pipeline = Pipeline(steps=[
-            ("Preprocessor", pre),
-            ("Scale", StandardScaler()),
-            ("Classifier", model)
-        ])
-    else:
-        model_pipeline = Pipeline(steps=[
-                    ("Preprocessor", pre),
-                    ("Classifier", model)
-                ])
+model_pipeline = Pipeline(steps=[
+    ("Preprocessor", pre),
+    ("Classifier", model)
+])
 
-    # Train Gaussian Naive Bayes using 5-fold cross-validation
-    param_grids = {
-        "Logistic Regression": {
-            "Classifier__C": [0.1, 1, 10],
-        },
-        "Decision Tree": {
-            "Classifier__max_depth": [None, 5, 10],
-            "Classifier__min_samples_split": [2, 5, 10],
-        },
-        "Random Forest": {
-            "Classifier__n_estimators": [100, 200],
-            "Classifier__max_depth": [None, 10, 20],
-        },
-        "Gradient Boosting": {
-            "Classifier__n_estimators": [100, 200],
-            "Classifier__learning_rate": [0.01, 0.1, 0.2],
-            "Classifier__max_depth": [2, 3, 5],
-        },
-        "Gaussian Naive Bayes": {
-            "Classifier__var_smoothing": [1e-11, 1e-9, 1e-7],
-        },
-        "SVM": {
-            "Classifier__C": [0.1, 1, 10],
-            "Classifier__kernel": ["linear", "rbf"],
-        },
+
+# 8. Train model
+model_pipeline.fit(Xtrain, ytrain)
+
+
+# 9. Validation evaluation
+threshold = 0.40
+
+val_proba = model_pipeline.predict_proba(Xval)[:, 1]
+val_pred = (val_proba >= threshold).astype(int)
+
+print("\nRANDOM FOREST — VALIDATION RESULTS")
+print("Parameters:", {
+    "max_depth": 10,
+    "n_estimators": 200,
+    "random_state": 42
+})
+print("Threshold:", threshold)
+print("Accuracy:", accuracy_score(yval, val_pred))
+print("Precision:", precision_score(
+    yval, val_pred, zero_division=0
+))
+print("Recall:", recall_score(
+    yval, val_pred, zero_division=0
+))
+print("F1:", f1_score(
+    yval, val_pred, zero_division=0
+))
+print("ROC-AUC:", roc_auc_score(yval, val_proba))
+
+print("\nValidation Confusion Matrix:")
+print(confusion_matrix(yval, val_pred))
+
+print("\nValidation Classification Report:")
+print(classification_report(
+    yval, val_pred, zero_division=0
+))
+
+
+# 10. Final held-out test evaluation
+# Run only after model and threshold selection are complete.
+test_proba = model_pipeline.predict_proba(Xtest)[:, 1]
+test_pred = (test_proba >= threshold).astype(int)
+
+print("\nRANDOM FOREST — FINAL TEST RESULTS")
+print("Threshold:", threshold)
+print("Accuracy:", accuracy_score(ytest, test_pred))
+print("Precision:", precision_score(
+    ytest, test_pred, zero_division=0
+))
+print("Recall:", recall_score(
+    ytest, test_pred, zero_division=0
+))
+print("F1:", f1_score(
+    ytest, test_pred, zero_division=0
+))
+print("ROC-AUC:", roc_auc_score(ytest, test_proba))
+
+print("\nTest Confusion Matrix:")
+print(confusion_matrix(ytest, test_pred))
+
+print("\nTest Classification Report:")
+print(classification_report(
+    ytest, test_pred, zero_division=0
+))
+
+
+
+
+def train_and_evaluate():
+    # Move your existing code here, starting from loading the dataset.
+    # Keep the same preprocessing, split, model, and evaluation logic.
+
+    # After fitting and evaluating:
+    metrics = {
+        "validation_f1": f1_score(yval, val_pred),
+        "test_f1": f1_score(ytest, test_pred),
+        "test_roc_auc": roc_auc_score(ytest, test_proba)
     }
 
-    grid_search = GridSearchCV(
-        estimator=model_pipeline,
-        param_grid=param_grids[model_name],
-        scoring="roc_auc",
-        cv=5,
-        n_jobs=-1,
-        verbose=1,
-        return_train_score=True
-    )
-
-    grid_search.fit(Xtrain, ytrain)
-
-    print(f"\n {model_name} — TRAINING RESULTS")
-    print("Best parameters:", grid_search.best_params_)
-    print("Best CV ROC-AUC:", grid_search.best_score_)
-
-    best_model = grid_search.best_estimator_
+    return model_pipeline, metrics
 
 
-    val_proba = best_model.predict_proba(Xval)[:, 1]
-
-    # Use the default probability threshold of 0.50 initially
-    val_pred = (val_proba >= 0.50).astype(int)
-
-    print(f"\n {model_name} — VALIDATION RESULTS")
-    print("Accuracy:", accuracy_score(yval, val_pred))
-    print("Precision:", precision_score(yval, val_pred, zero_division=0))
-    print("Recall:", recall_score(yval, val_pred, zero_division=0))
-    print("F1:", f1_score(yval, val_pred, zero_division=0))
-    print("ROC-AUC:", roc_auc_score(yval, val_proba))
-
-
-# 6. Tune GaussianNB's variance smoothing
-# param_grid = {
-#     "Classifier__var_smoothing": [
-#         1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6
-#     ]
-# }
-
-# grid_search = GridSearchCV(
-#     estimator=model_pipeline,
-#     param_grid=param_grid,
-#     scoring="roc_auc",
-#     cv=5,
-#     n_jobs=-1,
-#     verbose=1,
-#     return_train_score=True
-# )
-
-# grid_search.fit(Xtrain, ytrain)
-
-# print("Best parameters:", grid_search.best_params_)
-# print("Best CV ROC-AUC:", grid_search.best_score_)
-
-# best_model = grid_search.best_estimator_
-
-# # 7. Select threshold using validation data only
-# val_proba = best_model.predict_proba(Xval)[:, 1]
-
-# thresholds = [0.20, 0.30, 0.40, 0.50, 0.65]
-# threshold_results = []
-
-# print("\nVALIDATION RESULTS")
-
-# for threshold in thresholds:
-#     val_pred = (val_proba >= threshold).astype(int)
-
-#     precision = precision_score(
-#         yval, val_pred, zero_division=0
-#     )
-#     recall = recall_score(
-#         yval, val_pred, zero_division=0
-#     )
-#     f1 = f1_score(
-#         yval, val_pred, zero_division=0
-#     )
-
-#     threshold_results.append({
-#         "threshold": threshold,
-#         "precision": precision,
-#         "recall": recall,
-#         "f1": f1
-#     })
-
-#     print(
-#         f"Threshold: {threshold:.2f} | "
-#         f"Precision: {precision:.3f} | "
-#         f"Recall: {recall:.3f} | "
-#         f"F1: {f1:.3f}"
-#     )
-
-# best_result = max(
-#     threshold_results,
-#     key=lambda result: result["f1"]
-# )
-
-# best_threshold = best_result["threshold"]
-
-# print("\nSelected threshold:", best_threshold)
-# print("Best validation F1:", best_result["f1"])
-
-# # 8. Final test evaluation — performed only once
-# test_proba = best_model.predict_proba(Xtest)[:, 1]
-# test_pred = (test_proba >= best_threshold).astype(int)
-
-# print("\nFINAL TEST RESULTS")
-# print("Threshold:", best_threshold)
-# print("Accuracy:", accuracy_score(ytest, test_pred))
-# print(
-#     "Precision:",
-#     precision_score(ytest, test_pred, zero_division=0)
-# )
-# print(
-#     "Recall:",
-#     recall_score(ytest, test_pred, zero_division=0)
-# )
-# print("F1:", f1_score(ytest, test_pred, zero_division=0))
-# print("ROC-AUC:", roc_auc_score(ytest, test_proba))
-
-# print("\nTest classification report:")
-# print(classification_report(ytest, test_pred, zero_division=0))
-
-# print("Test confusion matrix:")
-# print(confusion_matrix(ytest, test_pred))
+if __name__ == "__main__":
+    train_and_evaluate()
