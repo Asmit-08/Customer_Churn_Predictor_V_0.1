@@ -1,4 +1,5 @@
 import pandas as pd
+from schemas import CustomerData
 
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -205,7 +206,3 @@ def train_and_evaluate():
     }
 
     return model_pipeline, metrics
-
-
-if __name__ == "__main__":
-    train_and_evaluate()
