@@ -220,7 +220,7 @@ Before considering the project complete, verify the following:
 - The model identifies statistical patterns but does not establish the causes of churn.
 - A threshold that performs well on one dataset may not be optimal for another business.
 - Offline evaluation does not establish real-world retention impact.
-- Production deployment would require additional work on monitoring, data drift, access control, reliability, and retraining.
+- Production deployment would require additional work on monitoring, data drift, access control, reliability, and retraining..
 
 ## Future Improvements
 
