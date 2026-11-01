@@ -1,21 +1,41 @@
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, responses, status
 from schemas import CustomerData
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+MODEL_PATH = Path(__file__).resolve().parent / "churn_model.joblib"
+
+try:
+    artifact = joblib.load(MODEL_PATH)
+
+    model_pipeline = artifact["pipeline"]
+    threshold = artifact["threshold"]
+
+except FileNotFoundError:
+    logger.exception("Model artifact not found.")
+    raise RuntimeError("Model artifact is missing.")
+
+except (KeyError, TypeError):
+    logger.exception("Invalid model artifact structure.")
+    raise RuntimeError("Model artifact is invalid.")
+
+except Exception:
+    logger.exception("Failed to load model artifact.")
+    raise RuntimeError("Model artifact could not be loaded.")
+
 
 app = FastAPI(
     title="ML Production",
     description="First ML production level API"
 )
 
-# Load the fitted pipeline and metadata once when the app starts.
-artifact = joblib.load("churn_model.joblib")
-model_pipeline = artifact["pipeline"]
-threshold = artifact["threshold"]
 
-
-@app.get("/health")
+@app.get("/health", status_code=status.HTTP_200_OK)
 def get_health():
     return {
         "Status": "Ok",
@@ -23,7 +43,7 @@ def get_health():
     }
 
 
-@app.post("/predict")
+@app.post("/predict", status_code=status.HTTP_200_OK)
 def predict(data: CustomerData):
     customer_df = pd.DataFrame([data.model_dump()])
 
@@ -31,7 +51,6 @@ def predict(data: CustomerData):
     prediction = int(churn_probability >= threshold)
 
     return {
-        "prediction": prediction,
         "churn_probability": float(churn_probability),
         "threshold": threshold,
         "message": (

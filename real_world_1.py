@@ -25,6 +25,7 @@ def train_and_evaluate():
 )
 
 
+
     # 2. Basic data preparation
     df.drop(
         columns=["customerID", "PaymentMethod"],
